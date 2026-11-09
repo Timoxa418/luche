@@ -368,6 +368,7 @@
   }
 
   // ---- карточка товара ----
+ // ---- карточка товара ----
   function openProduct(id) {
     const p = find(id);
     if (!p) return;
@@ -375,6 +376,12 @@
     const imgs = p.images && p.images.length ? p.images : [null];
     const off = p.oldPrice > p.price ? Math.round((1 - p.price / p.oldPrice) * 100) : 0;
     const anyAvailable = p.sizes.some((s) => s.available);
+
+    // Формируем кнопки размеров с учётом FBS-остатков
+    const sizesHtml = p.sizes.map((s) => {
+      const stockText = s.stock !== undefined ? (s.stock > 0 ? ` (${s.stock} шт.)` : ' (нет)') : '';
+      return `<button class="size ${s.available ? '' : 'off'}" data-size="${esc(s.size)}">${esc(s.size)}${stockText}</button>`;
+    }).join('');
 
     const html = `
       <button class="close" data-act="close" aria-label="Закрыть">✕</button>
@@ -385,7 +392,7 @@
         <h2>${esc(p.title)}</h2>
         <div class="bigprice">${fmt(p.price)}${off ? `<s>${fmt(p.oldPrice)}</s>` : ''}</div>
         <div class="label">Размер</div>
-        <div class="sizes" id="sizes">${p.sizes.map((s) => `<button class="size ${s.available ? '' : 'off'}" data-size="${esc(s.size)}">${esc(s.size)}</button>`).join('')}</div>
+        <div class="sizes" id="sizes">${sizesHtml}</div>
         ${p.description ? `<div class="label">Описание</div><div class="desc">${esc(p.description)}</div>` : ''}
         ${p.attrs && p.attrs.length ? `<div class="label">Характеристики</div><div class="attrs">${p.attrs.map((a) => `<span>${esc(a.name)}</span><span>${esc(a.value)}</span>`).join('')}</div>` : ''}
       </div>
