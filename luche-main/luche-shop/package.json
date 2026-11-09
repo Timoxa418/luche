@@ -1,0 +1,13 @@
+{
+  "name": "luche-shop",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Telegram Mini App магазина детской одежды Luche",
+  "engines": { "node": ">=18" },
+ "scripts": {
+  "start": "node server.mjs",
+  "import": "node import-wb.mjs",
+  "import:demo": "node import-wb.mjs --cards sample/wb-cards.json --prices sample/wb-prices.json --no-images"
+ }
+}
