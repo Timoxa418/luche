@@ -1,0 +1,88 @@
+{
+  "cards": [
+    {
+      "nmID": 100000001,
+      "vendorCode": "LU-BODY-01",
+      "brand": "Luche",
+      "subjectName": "Боди",
+      "title": "Боди с длинным рукавом, хлопок",
+      "description": "Мягкое боди из натурального хлопка с кнопками на плечах и в ластовице. Не раздражает нежную кожу малыша, хорошо держит форму после стирки.",
+      "photos": [],
+      "sizes": [{ "techSize": "62" }, { "techSize": "68" }, { "techSize": "74" }, { "techSize": "80" }],
+      "characteristics": [
+        { "name": "Цвет", "value": ["молочный"] },
+        { "name": "Состав", "value": ["хлопок 100%"] },
+        { "name": "Пол", "value": ["Унисекс"] },
+        { "name": "Сезон", "value": ["демисезон"] }
+      ]
+    },
+    {
+      "nmID": 100000002,
+      "vendorCode": "LU-HOODIE-02",
+      "brand": "Luche",
+      "subjectName": "Худи",
+      "title": "Худи на молнии с капюшоном",
+      "description": "Тёплое худи из футера с начёсом. Молния с защитой подбородка, карманы-кенгуру.",
+      "photos": [],
+      "sizes": [{ "techSize": "92" }, { "techSize": "98" }, { "techSize": "104" }, { "techSize": "110" }, { "techSize": "116" }],
+      "characteristics": [
+        { "name": "Цвет", "value": ["шалфей"] },
+        { "name": "Состав", "value": ["хлопок 80%", "полиэстер 20%"] },
+        { "name": "Сезон", "value": ["осень-весна"] }
+      ]
+    },
+    {
+      "nmID": 100000003,
+      "vendorCode": "LU-OVERALL-03",
+      "brand": "Luche",
+      "subjectName": "Комбинезоны",
+      "title": "Комбинезон демисезонный на флисе",
+      "description": "Комбинезон для прогулок: ветрозащитная ткань, мягкий флисовый подклад, манжеты на резинке.",
+      "photos": [],
+      "sizes": [{ "techSize": "68" }, { "techSize": "74" }, { "techSize": "80" }, { "techSize": "86" }],
+      "characteristics": [
+        { "name": "Цвет", "value": ["терракотовый"] },
+        { "name": "Состав", "value": ["полиэстер 100%"] }
+      ]
+    },
+    {
+      "nmID": 100000004,
+      "vendorCode": "LU-TEE-04",
+      "brand": "Luche",
+      "subjectName": "Футболки",
+      "title": "Футболка с принтом «Лучик»",
+      "description": "Футболка из гладкого хлопкового джерси с водным принтом.",
+      "photos": [],
+      "sizes": [{ "techSize": "98" }, { "techSize": "104" }, { "techSize": "110" }, { "techSize": "116" }, { "techSize": "122" }],
+      "characteristics": [
+        { "name": "Цвет", "value": ["жёлтый"] },
+        { "name": "Состав", "value": ["хлопок 100%"] }
+      ]
+    },
+    {
+      "nmID": 100000005,
+      "vendorCode": "LU-HAT-05",
+      "brand": "Luche",
+      "subjectName": "Шапки",
+      "title": "Шапка вязаная с отворотом",
+      "description": "Шапка из мериносовой шерсти с мягкой подкладкой.",
+      "photos": [],
+      "sizes": [{ "techSize": "0" }],
+      "characteristics": [
+        { "name": "Цвет", "value": ["бежевый"] },
+        { "name": "Состав", "value": ["шерсть 50%", "акрил 50%"] }
+      ]
+    },
+    {
+      "nmID": 100000006,
+      "vendorCode": "LU-NOPRICE-06",
+      "brand": "Luche",
+      "subjectName": "Штаны",
+      "title": "Штанишки без цены (тест)",
+      "description": "Проверка: товар без цены не должен попасть в каталог.",
+      "photos": [],
+      "sizes": [{ "techSize": "86" }],
+      "characteristics": []
+    }
+  ]
+}
