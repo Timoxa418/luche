@@ -1,0 +1,11 @@
+{
+  "data": {
+    "listGoods": [
+      { "nmID": 100000001, "discount": 20, "sizes": [{ "sizeID": 1, "price": 1490, "discountedPrice": 1192 }] },
+      { "nmID": 100000002, "discount": 15, "sizes": [{ "sizeID": 2, "price": 3290, "discountedPrice": 2796 }] },
+      { "nmID": 100000003, "discount": 10, "sizes": [{ "sizeID": 3, "price": 5990, "discountedPrice": 5391 }] },
+      { "nmID": 100000004, "discount": 0, "sizes": [{ "sizeID": 4, "price": 990, "discountedPrice": 990 }] },
+      { "nmID": 100000005, "discount": 25, "sizes": [{ "sizeID": 5, "price": 1190, "discountedPrice": 893 }] }
+    ]
+  }
+}
