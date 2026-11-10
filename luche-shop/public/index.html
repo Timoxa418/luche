@@ -271,8 +271,8 @@
   // ---- загрузка ----
   async function init() {
     try {
-     const [prod, cfg] = await Promise.all([
-  fetch('products.json?v=' + Date.now(), { cache: 'no-cache' }).then((r) => r.json()),
+ const [prod, cfg] = await Promise.all([
+  fetch('products.json', { cache: 'no-cache' }).then((r) => r.json()),
   fetch('api/config').then((r) => r.json()).catch(() => ({})),
 ]);
       state.products = prod.products || [];
