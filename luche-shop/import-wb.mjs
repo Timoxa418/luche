@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-// Импорт карточек товаров и FBS-остатков из кабинета Wildberries в public/products.json
-
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,23 +25,15 @@ const opt = (name) => {
 };
 const flag = (name) => argv.includes(name);
 
-const cardsFile = opt('--cards');
-const pricesFile = opt('--prices');
 const skipImages = flag('--no-images');
 const maxPhotos = Number(opt('--max-photos') || 5);
 const token = process.env.WB_TOKEN;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function wb(url, { method = 'GET', body, hostType = 'content' } = {}) {
-  let base = 'https://content-api.wildberries.ru';
-  if (hostType === 'prices') base = 'https://discounts-prices-api.wildberries.ru';
-  if (hostType === 'marketplace') base = 'https://marketplace-api.wildberries.ru';
-
-  const fullUrl = url.startsWith('http') ? url : `${base}${url}`;
-
+async function wb(url, { method = 'GET', body } = {}) {
   for (let attempt = 1; attempt <= 5; attempt++) {
-    const res = await fetch(fullUrl, {
+    const res = await fetch(url, {
       method,
       headers: { Authorization: token, 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined,
@@ -54,25 +44,19 @@ async function wb(url, { method = 'GET', body, hostType = 'content' } = {}) {
     }
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      if (res.status === 401 || res.status === 403) {
-        throw new Error(
-          `WB отклонил токен (${res.status}). Убедитесь, что токен имеет права на Контент, Цены и Маркетплейс (FBS). ${text}`
-        );
-      }
-      throw new Error(`WB ${res.status} на ${fullUrl}: ${text.slice(0, 300)}`);
+      throw new Error(`WB ${res.status} на ${url}: ${text.slice(0, 300)}`);
     }
     return res.json();
   }
-  throw new Error(`WB: слишком много запросов подряд (${fullUrl})`);
+  throw new Error(`WB: лимит запросов (${url})`);
 }
 
 async function fetchCards() {
   const cards = [];
   let cursor = { limit: 100 };
   for (;;) {
-    const r = await wb('/content/v2/get/cards/list?locale=ru', {
+    const r = await wb('https://content-api.wildberries.ru/content/v2/get/cards/list?locale=ru', {
       method: 'POST',
-      hostType: 'content',
       body: { settings: { cursor, filter: { withPhoto: -1 } } },
     });
     const list = r.cards || [];
@@ -92,8 +76,7 @@ async function fetchPrices() {
   const limit = 1000;
   for (let offset = 0; ; offset += limit) {
     const r = await wb(
-      `https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter?limit=${limit}&offset=${offset}`,
-      { hostType: 'prices' }
+      `https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter?limit=${limit}&offset=${offset}`
     );
     const list = r?.data?.listGoods || [];
     for (const g of list) map.set(g.nmID, pickPrice(g));
@@ -118,99 +101,28 @@ function pickPrice(g) {
   return { price, oldPrice: old > price ? old : 0 };
 }
 
-// Запрос остатков со всех FBS-складов продавца
-async function fetchFbsStocks(cards) {
-  const stockMap = new Map(); // ключ: `${nmID}_${sizeName}` -> stock числом
-  try {
-    const warehouses = await wb('/api/v3/warehouses', { hostType: 'marketplace' });
-    if (!Array.isArray(warehouses) || !warehouses.length) {
-      console.warn('FBS-склады не найдены в аккаунте Wildberries.');
-      return stockMap;
-    }
-
-    // Собираем все nmID и соответствие скид/штрихкодов
-    const skusByNmId = new Map();
-    for (const card of cards) {
-      const skus = [];
-      for (const s of (card.sizes || [])) {
-        const sizeName = String(s?.techSize ?? s?.wbSize ?? '').trim() || 'Один размер';
-        for (const sk of (s.skus || [])) {
-          skus.push({ sku: sk, sizeName });
-        }
-      }
-      skusByNmId.set(card.nmID, skus);
-    }
-
-    for (const wh of warehouses) {
-      const whId = wh.id;
-      // Получаем штрихкоды, которые есть на этом складе
-      // Запрашиваем порциями по 1000 баркодов если нужно, либо передаем все
-      const allSkus = [];
-      for (const card of cards) {
-        for (const s of (card.sizes || [])) {
-          for (const sk of (s.skus || [])) allSkus.push(sk);
-        }
-      }
-      if (!allSkus.length) continue;
-
-      for (let i = 0; i < allSkus.length; i += 1000) {
-        const chunk = allSkus.slice(i, i + 1000);
-        try {
-          const res = await wb(`/api/v3/stocks/${whId}`, {
-            method: 'POST',
-            hostType: 'marketplace',
-            body: { skus: chunk },
-          });
-          const stocksList = res?.stocks || [];
-          for (const st of stocksList) {
-            // st.sku, st.amount
-            // найдем, к какому товару и размеру относится этот sku
-            for (const card of cards) {
-              for (const s of (card.sizes || [])) {
-                const sizeName = String(s?.techSize ?? s?.wbSize ?? '').trim() || 'Один размер';
-                if ((s.skus || []).includes(st.sku)) {
-                  const key = `${card.nmID}_${sizeName}`;
-                  const currentStock = stockMap.get(key) || 0;
-                  stockMap.set(key, currentStock + (Number(st.amount) || 0));
-                }
-              }
-            }
-          }
-        } catch (e) {
-          console.warn(`Не удалось получить остатки для склада ${whId}: ${e.message}`);
-        }
-        await sleep(500);
-      }
-    }
-  } catch (e) {
-    console.warn(`Ошибка при запросе FBS остатков: ${e.message}. Остатки будут показаны как доступные.`);
-  }
-  return stockMap;
-}
-
 function cleanSize(s) {
   const v = String(s?.techSize ?? s?.wbSize ?? '').trim();
   return v && v !== '0' ? v : 'Один размер';
 }
 
-function toProduct(card, priceInfo, stockMap) {
+function toProduct(card, priceInfo) {
+  // Автоматическая обработка размеров
   const rawSizes = card.sizes || [];
-  const uniqueSizes = [...new Set(rawSizes.map(cleanSize))];
+  const sizesMap = new Map();
 
-  const sizes = uniqueSizes.map((sizeName) => {
-    // Считаем суммарный остаток для этого размера
-    const key = `${card.nmID}_${sizeName}`;
-    const stock = stockMap.has(key) ? stockMap.get(key) : null;
-    
-    // Если остаток получен и равен 0, то available = false, иначе true
-    const available = stock === null ? true : stock > 0;
-    
-    return {
+  for (const s of rawSizes) {
+    const sizeName = cleanSize(s);
+    // Проверяем наличие на складе по данным карточки и штрихкодов
+    const hasSkus = Array.isArray(s.skus) && s.skus.length > 0;
+    // Если размер присутствует в карточке WB, считаем его доступным, если не указано обратное
+    sizesMap.set(sizeName, {
       size: sizeName,
-      available,
-      stock: stock !== null ? stock : undefined // точное количество штук
-    };
-  });
+      available: hasSkus
+    });
+  }
+
+  const sizes = Array.from(sizesMap.values());
 
   const attrs = (card.characteristics || [])
     .map((c) => ({
@@ -280,46 +192,29 @@ async function downloadImages(products) {
   }
   await Promise.all([worker(), worker(), worker(), worker()]);
   if (jobs.length) process.stdout.write('\n');
-  if (failed) console.warn(`Не удалось скачать фото: ${failed} (останутся ссылки на WB)`);
 }
 
 async function main() {
-  let cards;
-  let prices = new Map();
-
-  if (cardsFile) {
-    cards = JSON.parse(fs.readFileSync(path.resolve(cardsFile), 'utf8'));
-    cards = cards.cards || cards;
-    if (pricesFile) {
-      const list = JSON.parse(fs.readFileSync(path.resolve(pricesFile), 'utf8'));
-      for (const g of list?.data?.listGoods || list) prices.set(g.nmID, pickPrice(g));
-    }
-  } else {
-    if (!token) {
-      console.error('Не найден WB_TOKEN. Укажите токен в переменных окружения.');
-      process.exit(1);
-    }
-    console.log('Загружаю карточки из Wildberries…');
-    cards = await fetchCards();
-    console.log('Загружаю цены…');
-    try {
-      prices = await fetchPrices();
-    } catch (e) {
-      console.warn(`Не получилось взять цены из WB: ${e.message}`);
-    }
+  if (!token) {
+    console.error('Не найден WB_TOKEN.');
+    process.exit(1);
   }
 
-  console.log('Загружаю остатки со склада FBS…');
-  const fbsStocks = cardsFile ? new Map() : await fetchFbsStocks(cards);
+  console.log('Загружаю карточки из Wildberries…');
+  const cards = await fetchCards();
+  console.log('Загружаю цены…');
+  let prices = new Map();
+  try {
+    prices = await fetchPrices();
+  } catch (e) {
+    console.warn(`Ошибка цен: ${e.message}`);
+  }
 
   const overrides = fs.existsSync(OVERRIDES) ? JSON.parse(fs.readFileSync(OVERRIDES, 'utf8')) : {};
 
-  let products = cards.map((c) => applyOverride(toProduct(c, prices.get(c.nmID), fbsStocks), overrides[String(c.nmID)]));
+  let products = cards.map((c) => applyOverride(toProduct(c, prices.get(c.nmID)), overrides[String(c.nmID)]));
 
-  const hidden = products.filter((p) => p.hidden).length;
-  products = products.filter((p) => !p.hidden);
-
-  products = products.filter((p) => p.price > 0);
+  products = products.filter((p) => !p.hidden && p.price > 0);
 
   if (!skipImages) await downloadImages(products);
 
@@ -329,10 +224,10 @@ async function main() {
   fs.writeFileSync(tmp, JSON.stringify(out, null, 2));
   fs.renameSync(tmp, OUT);
 
-  console.log(`Готово: ${products.length} товаров → public/products.json` + (hidden ? ` (скрыто: ${hidden})` : ''));
+  console.log(`Успешно обновлено ${products.length} товаров.`);
 }
 
 main().catch((e) => {
-  console.error('\nОшибка импорта:', e.message);
+  console.error('Ошибка:', e.message);
   process.exit(1);
 });
