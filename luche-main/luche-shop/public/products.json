@@ -1,0 +1,209 @@
+{
+  "currency": "RUB",
+  "updatedAt": "2026-11-08T13:19:04.562Z",
+  "products": [
+    {
+      "id": "100000001",
+      "sku": "LU-BODY-01",
+      "title": "Боди с длинным рукавом, хлопок",
+      "brand": "Luche",
+      "category": "Боди",
+      "description": "Мягкое боди из натурального хлопка с кнопками на плечах и в ластовице. Не раздражает нежную кожу малыша, хорошо держит форму после стирки.",
+      "price": 1192,
+      "oldPrice": 1490,
+      "sizes": [
+        {
+          "size": "62",
+          "available": true
+        },
+        {
+          "size": "68",
+          "available": true
+        },
+        {
+          "size": "74",
+          "available": true
+        },
+        {
+          "size": "80",
+          "available": true
+        }
+      ],
+      "images": [],
+      "attrs": [
+        {
+          "name": "Цвет",
+          "value": "молочный"
+        },
+        {
+          "name": "Состав",
+          "value": "хлопок 100%"
+        },
+        {
+          "name": "Пол",
+          "value": "Унисекс"
+        },
+        {
+          "name": "Сезон",
+          "value": "демисезон"
+        }
+      ]
+    },
+    {
+      "id": "100000002",
+      "sku": "LU-HOODIE-02",
+      "title": "Худи на молнии с капюшоном",
+      "brand": "Luche",
+      "category": "Худи",
+      "description": "Тёплое худи из футера с начёсом. Молния с защитой подбородка, карманы-кенгуру.",
+      "price": 2796,
+      "oldPrice": 3290,
+      "sizes": [
+        {
+          "size": "92",
+          "available": true
+        },
+        {
+          "size": "98",
+          "available": true
+        },
+        {
+          "size": "104",
+          "available": true
+        },
+        {
+          "size": "110",
+          "available": true
+        },
+        {
+          "size": "116",
+          "available": true
+        }
+      ],
+      "images": [],
+      "attrs": [
+        {
+          "name": "Цвет",
+          "value": "шалфей"
+        },
+        {
+          "name": "Состав",
+          "value": "хлопок 80%, полиэстер 20%"
+        },
+        {
+          "name": "Сезон",
+          "value": "осень-весна"
+        }
+      ]
+    },
+    {
+      "id": "100000003",
+      "sku": "LU-OVERALL-03",
+      "title": "Комбинезон демисезонный на флисе",
+      "brand": "Luche",
+      "category": "Комбинезоны",
+      "description": "Комбинезон для прогулок: ветрозащитная ткань, мягкий флисовый подклад, манжеты на резинке.",
+      "price": 5391,
+      "oldPrice": 5990,
+      "sizes": [
+        {
+          "size": "68",
+          "available": true
+        },
+        {
+          "size": "74",
+          "available": true
+        },
+        {
+          "size": "80",
+          "available": true
+        },
+        {
+          "size": "86",
+          "available": true
+        }
+      ],
+      "images": [],
+      "attrs": [
+        {
+          "name": "Цвет",
+          "value": "терракотовый"
+        },
+        {
+          "name": "Состав",
+          "value": "полиэстер 100%"
+        }
+      ]
+    },
+    {
+      "id": "100000004",
+      "sku": "LU-TEE-04",
+      "title": "Футболка с принтом «Лучик»",
+      "brand": "Luche",
+      "category": "Футболки",
+      "description": "Футболка из гладкого хлопкового джерси с водным принтом.",
+      "price": 990,
+      "oldPrice": 0,
+      "sizes": [
+        {
+          "size": "98",
+          "available": true
+        },
+        {
+          "size": "104",
+          "available": true
+        },
+        {
+          "size": "110",
+          "available": true
+        },
+        {
+          "size": "116",
+          "available": true
+        },
+        {
+          "size": "122",
+          "available": true
+        }
+      ],
+      "images": [],
+      "attrs": [
+        {
+          "name": "Цвет",
+          "value": "жёлтый"
+        },
+        {
+          "name": "Состав",
+          "value": "хлопок 100%"
+        }
+      ]
+    },
+    {
+      "id": "100000005",
+      "sku": "LU-HAT-05",
+      "title": "Шапка вязаная с отворотом",
+      "brand": "Luche",
+      "category": "Шапки",
+      "description": "Шапка из мериносовой шерсти с мягкой подкладкой.",
+      "price": 893,
+      "oldPrice": 1190,
+      "sizes": [
+        {
+          "size": "Один размер",
+          "available": true
+        }
+      ],
+      "images": [],
+      "attrs": [
+        {
+          "name": "Цвет",
+          "value": "бежевый"
+        },
+        {
+          "name": "Состав",
+          "value": "шерсть 50%, акрил 50%"
+        }
+      ]
+    }
+  ]
+}
