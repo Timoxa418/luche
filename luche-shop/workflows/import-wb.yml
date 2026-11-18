@@ -1,0 +1,56 @@
+name: Import Wildberries catalog to Supabase
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: luche-wb-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Locate Luche project
+        id: project
+        shell: bash
+        run: |
+          if [ -f "luche-main/luche-shop/package.json" ]; then
+            echo "dir=luche-main/luche-shop" >> "$GITHUB_OUTPUT"
+          elif [ -f "luche-shop/package.json" ]; then
+            echo "dir=luche-shop" >> "$GITHUB_OUTPUT"
+          else
+            echo "Не найдена папка luche-shop с package.json" >&2
+            exit 1
+          fi
+
+      - name: Validate secrets
+        env:
+          WB_TOKEN: ${{ secrets.WB_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          test -n "$WB_TOKEN" || { echo "Не задан GitHub Secret WB_TOKEN"; exit 1; }
+          test -n "$SUPABASE_URL" || { echo "Не задан GitHub Secret SUPABASE_URL"; exit 1; }
+          test -n "$SUPABASE_SECRET_KEY" || { echo "Не задан GitHub Secret SUPABASE_SECRET_KEY"; exit 1; }
+
+      - name: Import catalog
+        working-directory: ${{ steps.project.outputs.dir }}
+        env:
+          WB_TOKEN: ${{ secrets.WB_TOKEN }}
+          WB_ANALYTICS_TOKEN: ${{ secrets.WB_ANALYTICS_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: npm run import -- --no-images
