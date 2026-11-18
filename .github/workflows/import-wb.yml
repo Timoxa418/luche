@@ -26,5 +26,6 @@ jobs:
         run: npm run import
         env:
           WB_TOKEN: ${{ secrets.WB_TOKEN }}
+          MOYSKLAD_TOKEN: ${{ secrets.MOYSKLAD_TOKEN }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
