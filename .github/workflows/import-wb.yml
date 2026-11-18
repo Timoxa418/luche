@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: luche-main/luche-shop
+        working-directory: luche-shop
     steps:
       - name: Checkout
         uses: actions/checkout@v4
