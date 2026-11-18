@@ -11,11 +11,15 @@ const IMG_DIR = path.join(ROOT, 'public', 'img');
 function loadEnv() {
   const p = path.join(ROOT, '.env');
   if (!fs.existsSync(p)) return;
+
   for (const line of fs.readFileSync(p, 'utf8').split(/\r?\n/)) {
     const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/);
-    if (m && !(m[1] in process.env)) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+    if (m && !(m[1] in process.env)) {
+      process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+    }
   }
 }
+
 loadEnv();
 
 const argv = process.argv.slice(2);
@@ -28,10 +32,8 @@ const flag = (name) => argv.includes(name);
 const downloadImageFiles = flag('--download-images');
 const maxPhotos = Number(opt('--max-photos') || 5);
 const token = process.env.WB_TOKEN;
-// Один WB_TOKEN используется для всех API, если в нём включены нужные права, включая «Аналитику».
 const analyticsToken = process.env.WB_ANALYTICS_TOKEN || token;
 const marketplaceToken = token;
-const configuredWarehouseId = process.env.WB_WAREHOUSE_ID ? Number(process.env.WB_WAREHOUSE_ID) : null;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -39,30 +41,44 @@ function retryDelaySeconds(res, attempt) {
   const retry = Number(res.headers.get('X-Ratelimit-Retry'));
   const retryAfter = Number(res.headers.get('Retry-After'));
   const reset = Number(res.headers.get('X-Ratelimit-Reset'));
-  // Приоритет — точное время ожидания, которое вернул сам Wildberries.
-  const serverDelay = [retry, retryAfter, reset].find((v) => Number.isFinite(v) && v > 0);
-  return serverDelay ? Math.ceil(serverDelay) : Math.min(180, 10 * (2 ** (attempt - 1)));
+
+  const serverDelay = [retry, retryAfter, reset]
+    .find((v) => Number.isFinite(v) && v > 0);
+
+  return serverDelay
+    ? Math.ceil(serverDelay)
+    : Math.min(180, 10 * (2 ** (attempt - 1)));
 }
 
-async function requestWB(url, { method = 'GET', body, requestToken = token, service = 'WB' } = {}) {
+async function requestWB(
+  url,
+  { method = 'GET', body, requestToken = token, service = 'WB' } = {}
+) {
   for (let attempt = 1; attempt <= 5; attempt++) {
     const res = await fetch(url, {
       method,
-      headers: { Authorization: requestToken, 'Content-Type': 'application/json' },
+      headers: {
+        Authorization: requestToken,
+        'Content-Type': 'application/json',
+      },
       body: body ? JSON.stringify(body) : undefined,
     });
 
     if (res.status === 429) {
       const delaySeconds = retryDelaySeconds(res, attempt);
       const details = await res.text().catch(() => '');
+
       console.warn(
-        `[${service} 429] ${method} ${url}; повтор через ${delaySeconds} сек. ` +
-        `(попытка ${attempt}/5)` +
-        (details ? `; ответ: ${details.slice(0, 250)}` : '')
+        `[${service} 429] Повтор через ${delaySeconds} сек. ` +
+        `(попытка ${attempt}/5)`
       );
+
       if (attempt === 5) {
-        throw new Error(`${service}: лимит запросов после 5 попыток (${url}). Подробности: ${details.slice(0, 250)}`);
+        throw new Error(
+          `${service}: лимит запросов после 5 попыток (${url}). ${details.slice(0, 250)}`
+        );
       }
+
       await sleep(delaySeconds * 1000);
       continue;
     }
@@ -71,84 +87,131 @@ async function requestWB(url, { method = 'GET', body, requestToken = token, serv
 
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      throw new Error(`${service} ${res.status} на ${url}: ${text.slice(0, 300)}`);
+      throw new Error(
+        `${service} ${res.status} на ${url}: ${text.slice(0, 300)}`
+      );
     }
+
     return res.json();
   }
+
   throw new Error(`${service}: исчерпаны попытки запроса (${url})`);
 }
 
 async function wb(url, options = {}) {
-  return requestWB(url, { ...options, requestToken: token, service: 'WB' });
+  return requestWB(url, {
+    ...options,
+    requestToken: token,
+    service: 'WB',
+  });
 }
 
 async function wbMarketplace(url, options = {}) {
   if (!marketplaceToken) {
-    throw new Error('Не найден WB_TOKEN. Убедитесь, что токен имеет права на «Маркетплейс».');
+    throw new Error('Не найден WB_TOKEN.');
   }
-  return requestWB(url, { ...options, requestToken: marketplaceToken, service: 'WB Marketplace' });
+
+  return requestWB(url, {
+    ...options,
+    requestToken: marketplaceToken,
+    service: 'WB Marketplace',
+  });
 }
 
 async function wbAnalytics(url, options = {}) {
   if (!analyticsToken) {
-    throw new Error('У WB_TOKEN нет доступа к API аналитики. Проверьте, что для этого токена включена категория «Аналитика».');
+    throw new Error('Не найден токен WB Analytics.');
   }
-  return requestWB(url, { ...options, requestToken: analyticsToken, service: 'WB Analytics' });
+
+  return requestWB(url, {
+    ...options,
+    requestToken: analyticsToken,
+    service: 'WB Analytics',
+  });
 }
 
-// Новый отчёт WB по остаткам именно на складах продавца. В отличие от старого
-// Marketplace stocks API, не требует перечислять warehouseId и chrtId заранее.
+// Получение остатков со складов продавца.
 async function fetchFbsStocks(cards) {
-  // Ключ включает nmId и chrtId: так размеры разных карточек не смешаются.
   const totals = new Map();
-  const cardsByNmId = new Map(cards.map((card) => [Number(card.nmID), card]));
-  const nmIds = [...cardsByNmId.keys()].filter((id) => Number.isSafeInteger(id) && id > 0);
-  if (!nmIds.length) throw new Error('В карточках WB не найдены nmID для отчёта остатков.');
+  const cardsByNmId = new Map(
+    cards.map((card) => [Number(card.nmID), card])
+  );
+
+  const nmIds = [...cardsByNmId.keys()]
+    .filter((id) => Number.isSafeInteger(id) && id > 0);
+
+  if (!nmIds.length) {
+    throw new Error('В карточках WB не найдены nmID.');
+  }
 
   let returnedRows = 0;
   let positiveRows = 0;
   let summedQuantity = 0;
+
   const warehouses = new Map();
   const seenRows = new Set();
-  const endpoint = 'https://seller-analytics-api.wildberries.ru/api/analytics/v1/stocks-report/seller-warehouses';
+
+  const endpoint =
+    'https://seller-analytics-api.wildberries.ru/api/analytics/v1/stocks-report/seller-warehouses';
 
   for (let i = 0; i < nmIds.length; i += 1000) {
     const batch = nmIds.slice(i, i + 1000);
     let offset = 0;
     const limit = 250000;
+
     for (;;) {
       const result = await wbAnalytics(endpoint, {
         method: 'POST',
-        body: { nmIds: batch, limit, offset },
+        body: {
+          nmIds: batch,
+          limit,
+          offset,
+        },
       });
+
       const items = result?.data?.items ?? result?.items;
+
       if (!Array.isArray(items)) {
-        throw new Error('WB Analytics вернул пустой или неожиданный ответ по остаткам. Каталог не будет перезаписан нулями.');
+        throw new Error('WB Analytics вернул неожиданный ответ.');
       }
+
       if (items.length === 0 && offset === 0) {
-        throw new Error('WB Analytics вернул 0 строк остатков. Каталог не будет перезаписан нулями. Проверьте токен и наличие данных в отчёте.');
+        throw new Error('WB Analytics вернул 0 строк остатков.');
       }
 
       for (const item of items) {
         const nmId = Number(item.nmId ?? item.nmID);
         const chrtId = Number(item.chrtId ?? item.chrtID);
         const quantity = Number(item.quantity);
-        if (!cardsByNmId.has(nmId) || !Number.isSafeInteger(chrtId) || chrtId <= 0) continue;
+
+        if (!cardsByNmId.has(nmId)) continue;
+        if (!Number.isSafeInteger(chrtId) || chrtId <= 0) continue;
+
         if (!Number.isFinite(quantity) || quantity < 0) {
-          throw new Error(`WB Analytics вернул некорректный quantity для nmId=${nmId}, chrtId=${chrtId}: ${item.quantity}`);
+          throw new Error(
+            `Некорректный остаток для nmId=${nmId}, chrtId=${chrtId}`
+          );
         }
 
-        const warehouseId = String(item.warehouseId ?? item.warehouseName ?? 'unknown');
-        // В отчёте одна строка на размер и склад. Защита от повторной строки,
-        // чтобы случайно не удвоить остаток одного и того же склада.
+        const warehouseId = String(
+          item.warehouseId ?? item.warehouseName ?? 'unknown'
+        );
+
         const rowKey = `${warehouseId}:${nmId}:${chrtId}`;
+
         if (seenRows.has(rowKey)) continue;
         seenRows.add(rowKey);
 
         const stockKey = `${nmId}:${chrtId}`;
-        totals.set(stockKey, (totals.get(stockKey) || 0) + quantity);
+
+        totals.set(
+          stockKey,
+          (totals.get(stockKey) || 0) + quantity
+        );
+
         returnedRows++;
         summedQuantity += quantity;
+
         if (quantity > 0) positiveRows++;
 
         const wh = warehouses.get(warehouseId) || {
@@ -156,53 +219,94 @@ async function fetchFbsStocks(cards) {
           rows: 0,
           quantity: 0,
         };
+
         wh.rows++;
         wh.quantity += quantity;
         warehouses.set(warehouseId, wh);
       }
 
       if (items.length < limit) break;
+
       offset += items.length;
-      await sleep(21000); // лимит WB Analytics: не чаще одного запроса в 20 секунд
+      await sleep(21000);
     }
   }
 
   if (!returnedRows) {
-    throw new Error('В отчёте WB Analytics не найдено ни одной строки по карточкам. Каталог не будет перезаписан.');
+    throw new Error('В отчёте WB Analytics не найдено строк остатков.');
   }
 
-  console.log(`Отчёт WB по складам продавца: строк ${returnedRows}, положительных строк ${positiveRows}, суммарный остаток ${summedQuantity} шт.`);
-  console.log(`В сумму включены все склады продавца из отчёта (${warehouses.size}):`);
-  for (const wh of warehouses.values()) console.log(`  ${wh.name}: ${wh.rows} строк, ${wh.quantity} шт.`);
+  console.log(
+    `Остатки WB: строк ${returnedRows}, ` +
+    `положительных ${positiveRows}, всего ${summedQuantity} шт.`
+  );
+
+  for (const wh of warehouses.values()) {
+    console.log(
+      `Склад ${wh.name}: ${wh.rows} строк, ${wh.quantity} шт.`
+    );
+  }
 
   for (const card of cards) {
     const entries = (card.sizes || []).map((size) => {
       const chrtId = Number(size.chrtID || size.chrtId || 0);
-      const label = String(size.techSize ?? size.wbSize ?? 'Один размер').trim() || 'Один размер';
-      const stock = chrtId > 0 ? (totals.get(`${card.nmID}:${chrtId}`) ?? 0) : 0;
-      return chrtId > 0 ? `${label}[${chrtId}]=${stock}` : `${label}[нет chrtId]`;
+      const label = String(
+        size.techSize ?? size.wbSize ?? 'Один размер'
+      ).trim();
+
+      const stock = chrtId > 0
+        ? (totals.get(`${card.nmID}:${chrtId}`) ?? 0)
+        : 0;
+
+      return `${label}[${chrtId}]=${stock}`;
     });
-    console.log(`[FBS] nmID=${card.nmID} vendorCode=${card.vendorCode || '-'}: ${entries.join(', ')}`);
+
+    console.log(
+      `[FBS] nmID=${card.nmID}: ${entries.join(', ')}`
+    );
   }
 
   return totals;
 }
+
 async function fetchCards() {
   const cards = [];
   let cursor = { limit: 100 };
+
   for (;;) {
-    const r = await wb('https://content-api.wildberries.ru/content/v2/get/cards/list?locale=ru', {
-      method: 'POST',
-      body: { settings: { cursor, filter: { withPhoto: -1 } } },
-    });
+    const r = await wb(
+      'https://content-api.wildberries.ru/content/v2/get/cards/list?locale=ru',
+      {
+        method: 'POST',
+        body: {
+          settings: {
+            cursor,
+            filter: { withPhoto: -1 },
+          },
+        },
+      }
+    );
+
     const list = r.cards || [];
     cards.push(...list);
+
     const c = r.cursor || {};
-    process.stdout.write(`\rКарточек получено: ${cards.length}`);
+
+    process.stdout.write(
+      `\rКарточек получено: ${cards.length}`
+    );
+
     if (list.length < 100 || !c.nmID) break;
-    cursor = { limit: 100, updatedAt: c.updatedAt, nmID: c.nmID };
+
+    cursor = {
+      limit: 100,
+      updatedAt: c.updatedAt,
+      nmID: c.nmID,
+    };
+
     await sleep(700);
   }
+
   process.stdout.write('\n');
   return cards;
 }
@@ -210,15 +314,23 @@ async function fetchCards() {
 async function fetchPrices() {
   const map = new Map();
   const limit = 1000;
+
   for (let offset = 0; ; offset += limit) {
     const r = await wb(
       `https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter?limit=${limit}&offset=${offset}`
     );
+
     const list = r?.data?.listGoods || [];
-    for (const g of list) map.set(g.nmID, pickPrice(g));
+
+    for (const g of list) {
+      map.set(g.nmID, pickPrice(g));
+    }
+
     if (list.length < limit) break;
+
     await sleep(700);
   }
+
   return map;
 }
 
@@ -230,24 +342,50 @@ function pickPrice(g) {
   for (const size of (g.sizes || [])) {
     const full = Number(size.price) || 0;
     const discountedValue = Number(size.discountedPrice);
-    const discounted = Number.isFinite(discountedValue) && discountedValue > 0
-      ? discountedValue
-      : (full ? Math.round(full * (1 - (Number(g.discount) || 0) / 100)) : 0);
+
+    const discounted =
+      Number.isFinite(discountedValue) && discountedValue > 0
+        ? discountedValue
+        : (
+          full
+            ? Math.round(
+                full * (1 - (Number(g.discount) || 0) / 100)
+              )
+            : 0
+        );
+
     const item = {
       price: discounted,
       oldPrice: full > discounted ? full : 0,
     };
+
     const sizeId = Number(size.sizeID);
     const sizeName = String(size.techSizeName || '').trim();
-    if (Number.isSafeInteger(sizeId) && sizeId > 0) bySizeId.set(sizeId, item);
+
+    if (Number.isSafeInteger(sizeId) && sizeId > 0) {
+      bySizeId.set(sizeId, item);
+    }
+
     if (sizeName) bySizeName.set(sizeName, item);
+
     if (discounted > 0) candidates.push(item);
   }
 
   candidates.sort((a, b) => a.price - b.price);
-  const lowest = candidates[0] || { price: 0, oldPrice: 0 };
-  return { bySizeId, bySizeName, price: lowest.price, oldPrice: lowest.oldPrice };
+
+  const lowest = candidates[0] || {
+    price: 0,
+    oldPrice: 0,
+  };
+
+  return {
+    bySizeId,
+    bySizeName,
+    price: lowest.price,
+    oldPrice: lowest.oldPrice,
+  };
 }
+
 function cleanSize(s) {
   const v = String(s?.techSize ?? s?.wbSize ?? '').trim();
   return v && v !== '0' ? v : 'Один размер';
@@ -256,24 +394,38 @@ function cleanSize(s) {
 function toProduct(card, priceInfo, stockMap) {
   const rawSizes = card.sizes || [];
   const sizesMap = new Map();
+
   for (const raw of rawSizes) {
     const sizeName = cleanSize(raw);
     const chrtId = Number(raw.chrtID || raw.chrtId || 0);
-    const stock = chrtId > 0 ? (stockMap.get(`${card.nmID}:${chrtId}`) || 0) : 0;
-    // В Prices & Discounts sizeID соответствует chrtID из Content API.
-    const sizePrice = (chrtId > 0 ? priceInfo?.bySizeId?.get(chrtId) : null)
+
+    const stock = chrtId > 0
+      ? (stockMap.get(`${card.nmID}:${chrtId}`) || 0)
+      : 0;
+
+    const sizePrice =
+      (chrtId > 0 ? priceInfo?.bySizeId?.get(chrtId) : null)
       || priceInfo?.bySizeName?.get(sizeName)
-      || { price: priceInfo?.price || 0, oldPrice: priceInfo?.oldPrice || 0 };
+      || {
+        price: priceInfo?.price || 0,
+        oldPrice: priceInfo?.oldPrice || 0,
+      };
+
     const previous = sizesMap.get(sizeName);
+
     if (previous) {
       previous.stock += stock;
+
       if (chrtId > 0) previous.chrtIds.push(chrtId);
-      // Если WB отдал несколько вариантов одного отображаемого размера,
-      // сохраняем минимальную цену и суммируем их остатки.
-      if (sizePrice.price > 0 && (!previous.price || sizePrice.price < previous.price)) {
+
+      if (
+        sizePrice.price > 0 &&
+        (!previous.price || sizePrice.price < previous.price)
+      ) {
         previous.price = sizePrice.price;
         previous.oldPrice = sizePrice.oldPrice;
       }
+
       previous.available = previous.stock > 0;
     } else {
       sizesMap.set(sizeName, {
@@ -287,13 +439,24 @@ function toProduct(card, priceInfo, stockMap) {
       });
     }
   }
+
   const sizes = Array.from(sizesMap.values());
-  const pricedSizes = sizes.filter((size) => size.price > 0).sort((a, b) => a.price - b.price);
-  const lowest = pricedSizes[0] || { price: priceInfo?.price || 0, oldPrice: priceInfo?.oldPrice || 0 };
+
+  const pricedSizes = sizes
+    .filter((size) => size.price > 0)
+    .sort((a, b) => a.price - b.price);
+
+  const lowest = pricedSizes[0] || {
+    price: priceInfo?.price || 0,
+    oldPrice: priceInfo?.oldPrice || 0,
+  };
+
   const attrs = (card.characteristics || [])
     .map((c) => ({
       name: String(c.name || '').trim(),
-      value: Array.isArray(c.value) ? c.value.join(', ') : String(c.value ?? ''),
+      value: Array.isArray(c.value)
+        ? c.value.join(', ')
+        : String(c.value ?? ''),
     }))
     .filter((a) => a.name && a.value && a.value.length <= 70)
     .slice(0, 10);
@@ -307,86 +470,165 @@ function toProduct(card, priceInfo, stockMap) {
     description: (card.description || '').trim(),
     price: lowest.price,
     oldPrice: lowest.oldPrice,
-    sizes: sizes.length ? sizes : [{ size: 'Один размер', stock: 0, available: false, price: lowest.price, oldPrice: lowest.oldPrice }],
-    images: (card.photos || []).map((p) => p.big || p.c516x688 || p.c246x328).filter(Boolean),
+    sizes: sizes.length
+      ? sizes
+      : [{
+          size: 'Один размер',
+          stock: 0,
+          available: false,
+          price: lowest.price,
+          oldPrice: lowest.oldPrice,
+        }],
+    images: (card.photos || [])
+      .map((p) => p.big || p.c516x688 || p.c246x328)
+      .filter(Boolean),
     attrs,
   };
 }
+
 function applyOverride(p, o) {
   if (!o) return p;
+
   const { soldOutSizes, ...rest } = o;
   const out = { ...p, ...rest };
+
   if (Object.prototype.hasOwnProperty.call(rest, 'price')) {
-    out.sizes = out.sizes.map((s) => ({ ...s, price: Number(rest.price) || 0 }));
+    out.sizes = out.sizes.map((s) => ({
+      ...s,
+      price: Number(rest.price) || 0,
+    }));
   }
+
   if (Object.prototype.hasOwnProperty.call(rest, 'oldPrice')) {
-    out.sizes = out.sizes.map((s) => ({ ...s, oldPrice: Number(rest.oldPrice) || 0 }));
+    out.sizes = out.sizes.map((s) => ({
+      ...s,
+      oldPrice: Number(rest.oldPrice) || 0,
+    }));
   }
+
   if (Array.isArray(soldOutSizes)) {
-    out.sizes = out.sizes.map((s) => ({ ...s, available: !soldOutSizes.includes(s.size) }));
+    out.sizes = out.sizes.map((s) => ({
+      ...s,
+      available: !soldOutSizes.includes(s.size),
+    }));
   }
+
   return out;
 }
 
 async function downloadImages(products) {
   fs.mkdirSync(IMG_DIR, { recursive: true });
+
   const jobs = [];
+
   for (const p of products) {
     p.images = p.images.slice(0, maxPhotos);
+
     p.images.forEach((url, i) => {
       if (!/^https?:/i.test(url)) return;
-      const ext = (url.split('?')[0].match(/\.(webp|jpe?g|png)$/i) || [, 'webp'])[1].toLowerCase();
+
+      const ext = (
+        url.split('?')[0].match(/\.(webp|jpe?g|png)$/i) || [, 'webp']
+      )[1].toLowerCase();
+
       const rel = `img/${p.id}/${i + 1}.${ext}`;
+
       jobs.push({ p, i, url, rel });
     });
   }
+
   let done = 0;
-  let failed = 0;
   const queue = [...jobs];
+
   async function worker() {
     while (queue.length) {
       const j = queue.shift();
       const file = path.join(ROOT, 'public', j.rel);
+
       try {
         if (!fs.existsSync(file)) {
           const res = await fetch(j.url);
           if (!res.ok) throw new Error(String(res.status));
+
           fs.mkdirSync(path.dirname(file), { recursive: true });
-          fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+
+          fs.writeFileSync(
+            file,
+            Buffer.from(await res.arrayBuffer())
+          );
         }
+
         j.p.images[j.i] = j.rel;
       } catch {
-        failed++;
+        // Если фото недоступно, оставляем исходную ссылку.
       }
-      process.stdout.write(`\rФото: ${++done}/${jobs.length}`);
+
+      process.stdout.write(
+        `\rФото: ${++done}/${jobs.length}`
+      );
     }
   }
-  await Promise.all([worker(), worker(), worker(), worker()]);
+
+  await Promise.all([
+    worker(),
+    worker(),
+    worker(),
+    worker(),
+  ]);
+
   if (jobs.length) process.stdout.write('\n');
 }
 
-
 async function supabaseRequest(table, query, body) {
   const url = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
-  const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-  if (!url || !key) throw new Error('Для импорта в Supabase задайте SUPABASE_URL и SUPABASE_SECRET_KEY.');
-  const res = await fetch(`${url}/rest/v1/${table}${query ? `?${query}` : ''}`, {
-    method: body === undefined ? 'GET' : 'POST',
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/json',
-      Prefer: 'resolution=merge-duplicates,return=representation',
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+
+  const key =
+    process.env.SUPABASE_SECRET_KEY
+    || process.env.SUPABASE_SERVICE_ROLE_KEY
+    || '';
+
+  if (!url || !key) {
+    throw new Error(
+      'Для импорта в Supabase задайте SUPABASE_URL и SUPABASE_SECRET_KEY.'
+    );
+  }
+
+  const res = await fetch(
+    `${url}/rest/v1/${table}${query ? `?${query}` : ''}`,
+    {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates,return=representation',
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }
+  );
+
   const raw = await res.text();
-  let data; try { data = raw ? JSON.parse(raw) : null; } catch { data = raw; }
-  if (!res.ok) throw new Error(`Supabase ${table} ${res.status}: ${data?.message || raw}`);
+
+  let data;
+  try {
+    data = raw ? JSON.parse(raw) : null;
+  } catch {
+    data = raw;
+  }
+
+  if (!res.ok) {
+    throw new Error(
+      `Supabase ${table} ${res.status}: ${data?.message || raw}`
+    );
+  }
+
   return data;
 }
 
-async function saveProductsToSupabase(products) {
+async function saveProductsToSupabase(
+  products,
+  { updateStocks = true } = {}
+) {
   const productRows = products.map((p) => ({
     wb_nm_id: Number(p.id),
     name: p.title,
@@ -400,91 +642,216 @@ async function saveProductsToSupabase(products) {
     old_price: Number(p.oldPrice) || 0,
     is_active: true,
   }));
-  if (!productRows.length) throw new Error('Импорт дал 0 товаров. Supabase не будет изменён.');
-  // Supabase returns the upserted rows; use them directly instead of reading
-  // the entire products table (which may exceed the REST API row limit).
-  const savedProducts = await supabaseRequest('products', 'on_conflict=wb_nm_id&select=id,wb_nm_id', productRows);
-  const productIds = new Map((savedProducts || []).map((p) => [Number(p.wb_nm_id), p.id]));
+
+  if (!productRows.length) {
+    throw new Error(
+      'Импорт дал 0 товаров. Supabase не будет изменён.'
+    );
+  }
+
+  const savedProducts = await supabaseRequest(
+    'products',
+    'on_conflict=wb_nm_id&select=id,wb_nm_id',
+    productRows
+  );
+
+  const productIds = new Map(
+    (savedProducts || []).map((p) => [
+      Number(p.wb_nm_id),
+      p.id,
+    ])
+  );
+
   let variantCount = 0;
   let stockCount = 0;
 
   for (const p of products) {
     const productId = productIds.get(Number(p.id));
-    if (!productId) throw new Error(`Не удалось получить ID товара WB ${p.id} из Supabase.`);
+
+    if (!productId) {
+      throw new Error(
+        `Не удалось получить ID товара WB ${p.id} из Supabase.`
+      );
+    }
+
     const variants = (p.sizes || []).map((size) => ({
       product_id: productId,
-      wb_chrt_id: Number(size.chrtId) > 0 ? Number(size.chrtId) : null,
+      wb_chrt_id: Number(size.chrtId) > 0
+        ? Number(size.chrtId)
+        : null,
       sku: p.sku || null,
       size: String(size.size || 'Один размер'),
       price: Number(size.price) || Number(p.price) || 0,
     }));
+
     const withChrt = variants.filter((v) => v.wb_chrt_id);
     const withoutChrt = variants.filter((v) => !v.wb_chrt_id);
+
     let savedVariants = [];
+
     if (withChrt.length) {
-      savedVariants.push(...await supabaseRequest('variants', 'on_conflict=wb_chrt_id', withChrt));
+      savedVariants.push(
+        ...await supabaseRequest(
+          'variants',
+          'on_conflict=wb_chrt_id',
+          withChrt
+        )
+      );
     }
+
     if (withoutChrt.length) {
-      savedVariants.push(...await supabaseRequest('variants', '', withoutChrt));
+      savedVariants.push(
+        ...await supabaseRequest(
+          'variants',
+          '',
+          withoutChrt
+        )
+      );
     }
+
     variantCount += savedVariants.length;
 
-    const stockRows = savedVariants.map((v) => {
-      const source = (p.sizes || []).find((x) => v.wb_chrt_id
-        ? Number(x.chrtId) === Number(v.wb_chrt_id)
-        : String(x.size) === String(v.size));
-      return {
-        variant_id: v.id,
-        warehouse: 'Склады продавца WB (сумма)',
-        quantity: Math.max(0, Number(source?.stock) || 0),
-      };
-    });
-    if (stockRows.length) {
-      await supabaseRequest('stocks', 'on_conflict=variant_id,warehouse', stockRows);
-      stockCount += stockRows.length;
+    // Обновляем остатки только если WB Analytics успешно ответил.
+    // Если аналитика недоступна, старые остатки остаются без изменений.
+    if (updateStocks) {
+      const stockRows = savedVariants.map((v) => {
+        const source = (p.sizes || []).find((x) =>
+          v.wb_chrt_id
+            ? Number(x.chrtId) === Number(v.wb_chrt_id)
+            : String(x.size) === String(v.size)
+        );
+
+        return {
+          variant_id: v.id,
+          warehouse: 'Склады продавца WB (сумма)',
+          quantity: Math.max(
+            0,
+            Number(source?.stock) || 0
+          ),
+        };
+      });
+
+      if (stockRows.length) {
+        await supabaseRequest(
+          'stocks',
+          'on_conflict=variant_id,warehouse',
+          stockRows
+        );
+
+        stockCount += stockRows.length;
+      }
     }
   }
-  console.log(`Supabase: сохранено товаров ${productRows.length}, вариантов ${variantCount}, остатков ${stockCount}.`);
+
+  console.log(
+    `Supabase: товаров ${productRows.length}, ` +
+    `вариантов ${variantCount}, остатков обновлено ${stockCount}.`
+  );
+
+  if (!updateStocks) {
+    console.warn(
+      'Остатки не обновлялись. Существующие данные сохранены.'
+    );
+  }
 }
 
 async function main() {
   if (!token) {
-    console.error('Не найден WB_TOKEN.');
-    process.exit(1);
-  }
-  if (!analyticsToken) {
-    console.error('У WB_TOKEN нет доступа к API аналитики. Проверьте права токена в кабинете WB.');
-    process.exit(1);
+    throw new Error('Не найден WB_TOKEN.');
   }
 
   console.log('Загружаю карточки из Wildberries…');
   const cards = await fetchCards();
+
   console.log('Загружаю цены…');
   const prices = await fetchPrices();
+
   console.log('Загружаю остатки FBS…');
-  const stockMap = await fetchFbsStocks(cards);
 
-  const overrides = fs.existsSync(OVERRIDES) ? JSON.parse(fs.readFileSync(OVERRIDES, 'utf8')) : {};
+  let stockMap = new Map();
+  let stocksUpdated = false;
 
-  let products = cards.map((c) => applyOverride(toProduct(c, prices.get(c.nmID), stockMap), overrides[String(c.nmID)]));
+  try {
+    stockMap = await fetchFbsStocks(cards);
+    stocksUpdated = true;
+  } catch (e) {
+    const message = String(e.message || e);
 
-  products = products.filter((p) => !p.hidden && p.price > 0);
-  if (!products.length) {
-    throw new Error('После получения карточек не осталось товаров с корректной ценой. Supabase не будет изменён.');
+    if (
+      message.includes('WB Analytics 403')
+      || message.includes('token does not satisfy additional requirements')
+    ) {
+      console.warn(
+        'Нет доступа к WB Analytics. Продолжаю импорт без обновления остатков.'
+      );
+    } else {
+      throw e;
+    }
   }
 
-  // By default keep original WB image URLs. Files downloaded on a CI runner
-  // are ephemeral and would not be present in the Railway deployment.
-  if (downloadImageFiles) await downloadImages(products);
+  const overrides = fs.existsSync(OVERRIDES)
+    ? JSON.parse(fs.readFileSync(OVERRIDES, 'utf8'))
+    : {};
 
-  await saveProductsToSupabase(products);
-  const out = { currency: 'RUB', updatedAt: new Date().toISOString(), stockCheckedAt: new Date().toISOString(), stockSource: 'Wildberries Analytics seller-warehouses report', products };
-  fs.mkdirSync(path.dirname(OUT), { recursive: true });
+  let products = cards.map((c) =>
+    applyOverride(
+      toProduct(c, prices.get(c.nmID), stockMap),
+      overrides[String(c.nmID)]
+    )
+  );
+
+  products = products.filter(
+    (p) => !p.hidden && p.price > 0
+  );
+
+  if (!products.length) {
+    throw new Error(
+      'После получения карточек не осталось товаров с корректной ценой.'
+    );
+  }
+
+  if (downloadImageFiles) {
+    await downloadImages(products);
+  }
+
+  await saveProductsToSupabase(products, {
+    updateStocks: stocksUpdated,
+  });
+
+  const out = {
+    currency: 'RUB',
+    updatedAt: new Date().toISOString(),
+    stockCheckedAt: stocksUpdated
+      ? new Date().toISOString()
+      : null,
+    stockSource: stocksUpdated
+      ? 'Wildberries Analytics seller-warehouses report'
+      : 'Не обновлялись: нет доступа к WB Analytics',
+    products,
+  };
+
+  fs.mkdirSync(path.dirname(OUT), {
+    recursive: true,
+  });
+
   const tmp = OUT + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(out, null, 2));
+
+  fs.writeFileSync(
+    tmp,
+    JSON.stringify(out, null, 2)
+  );
+
   fs.renameSync(tmp, OUT);
 
-  console.log(`Успешно обновлено в Supabase ${products.length} товаров.`);
+  console.log(
+    `Успешно обновлено в Supabase: ${products.length} товаров.`
+  );
+
+  if (!stocksUpdated) {
+    console.log(
+      'Внимание: остатки не обновлены. Проверьте их отдельно перед продажей.'
+    );
+  }
 }
 
 main().catch((e) => {
