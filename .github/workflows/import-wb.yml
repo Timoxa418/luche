@@ -29,3 +29,4 @@ jobs:
           MOYSKLAD_TOKEN: ${{ secrets.MOYSKLAD_TOKEN }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          MOYSKLAD_TOKEN: ${{ secrets.MOYSKLAD_TOKEN }}
