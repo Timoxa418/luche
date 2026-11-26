@@ -204,14 +204,12 @@ async function fetchMoyskladStocks(cards) {
       || hrefId(row.assortment?.meta?.href || row.assortment?.href || row.meta?.href);
  const rawFreeStock = row.freeStock;
 const quantity = Number(rawFreeStock);
-
 if (
   rawFreeStock === undefined ||
   rawFreeStock === null ||
   rawFreeStock === '' ||
   typeof rawFreeStock === 'object' ||
-  !Number.isFinite(quantity) ||
-  quantity < 0
+  !Number.isFinite(quantity)
 ) {
   console.error(
     '[МойСклад] Пример строки отчёта:',
@@ -219,8 +217,7 @@ if (
   );
   throw new Error('МойСклад: некорректное значение freeStock.');
 }
-    stockById.set(id, quantity);
-  }
+stockById.set(id, quantity);
 
   const moyByPair = new Map();
   for (const item of assortment) {
