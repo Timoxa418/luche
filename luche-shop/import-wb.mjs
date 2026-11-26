@@ -200,10 +200,16 @@ async function fetchMoyskladStocks(cards) {
   for (const row of stockRows) {
     // В текущем кратком отчёте ID позиции приходит прямо в assortmentId.
     // В других вариантах ответа может приходить ссылка assortment.meta.href.
-    const id = String(row.assortmentId || '').trim()
-      || hrefId(row.assortment?.meta?.href || row.assortment?.href || row.meta?.href);
- const rawFreeStock = row.freeStock;
+   const id = String(row.assortmentId || '').trim()
+  || hrefId(row.assortment?.meta?.href || row.assortment?.href || row.meta?.href);
+
+const rawFreeStock = row.freeStock;
 const quantity = Number(rawFreeStock);
+
+if (!id) {
+  console.warn('[МойСклад] Пропущена строка без assortmentId:', row);
+  continue;
+}
 if (
   rawFreeStock === undefined ||
   rawFreeStock === null ||
