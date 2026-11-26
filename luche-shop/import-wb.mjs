@@ -202,11 +202,23 @@ async function fetchMoyskladStocks(cards) {
     // В других вариантах ответа может приходить ссылка assortment.meta.href.
     const id = String(row.assortmentId || '').trim()
       || hrefId(row.assortment?.meta?.href || row.assortment?.href || row.meta?.href);
-    const quantity = Number(row.freeStock);
-    if (!id) continue;
-    if (!Number.isFinite(quantity) || quantity < 0) {
-      throw new Error('МойСклад: некорректное значение freeStock в отчёте.');
-    }
+ const rawFreeStock = row.freeStock;
+const quantity = Number(rawFreeStock);
+
+if (
+  rawFreeStock === undefined ||
+  rawFreeStock === null ||
+  rawFreeStock === '' ||
+  typeof rawFreeStock === 'object' ||
+  !Number.isFinite(quantity) ||
+  quantity < 0
+) {
+  console.error(
+    '[МойСклад] Пример строки отчёта:',
+    JSON.stringify(row, null, 2).slice(0, 1500)
+  );
+  throw new Error('МойСклад: некорректное значение freeStock.');
+}
     stockById.set(id, quantity);
   }
 
