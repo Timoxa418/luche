@@ -206,6 +206,8 @@ async function fetchMoyskladStocks(cards) {
 const rawFreeStock = row.freeStock;
 const quantity = Number(rawFreeStock);
 
+    console.log('[DEBUG] freeStock:', rawFreeStock, 'quantity:', quantity, 'finite:', Number.isFinite(quantity));
+
 if (!id) {
   console.warn('[МойСклад] Пропущена строка без assortmentId:', row);
   continue;
